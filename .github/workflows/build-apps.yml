@@ -1,0 +1,69 @@
+name: Build Mobile Application
+
+on:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build-android:
+    name: Build Android Native App
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up Java Development Kit (JDK)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Setup Android SDK and NDK
+        uses: android-actions/setup-android@v3
+        with:
+          log-accepted-android-sdk-licenses: false
+
+      - name: Install Android NDK Module explicitly
+        run: |
+          sdkmanager --install "ndk;25.2.9519653" "build-tools;33.0.2" "platforms;android-33"
+
+      - name: Fetch Raylib Source and Build for Android
+        run: |
+          git clone --depth 1 https://github.com/raysan5/raylib.git raylib_src
+          cd raylib_src/src
+          make PLATFORM=PLATFORM_ANDROID ANDROID_NDK=/usr/local/lib/android/sdk/ndk/25.2.9519653 ANDROID_ARCH=arm64-v8a -j$(nproc)
+          cd ../..
+
+      - name: Structure Native Android Project Build Target
+        run: |
+          mkdir -p android/src android/obj android/lib/arm64-v8a
+          cp raylib_src/src/libraylib.a android/lib/arm64-v8a/
+          cp main.cpp android/src/
+
+      - name: Compile C++ Source Code to Shared Native Library
+        run: |
+          /usr/local/lib/android/sdk/ndk/25.2.9519653/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android33-clang++ \
+            -shared -fPIC -std=c++17 android/src/main.cpp \
+            -o android/lib/arm64-v8a/libmain.so \
+            -Iraylib_src/src -Landroid/lib/arm64-v8a -lraylib -lGLESv2 -lEGL -landroid -llog -lOpenSLES -m64
+
+      - name: Package and Assemble Native Application Package (APK)
+        run: |
+          cd android
+          echo '<?xml version="1.0" encoding="utf-8"?><manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.thegamut.voxelhopper" android:versionCode="1" android:versionName="1.0"><uses-sdk android:minSdkVersion="24" android:targetSdkVersion="33"/><uses-feature android:glEsVersion="0x00020000" android:required="true"/><application android:label="Voxel Hopper" android:hasCode="false"><activity android:name="android.app.NativeActivity" android:label="Voxel Hopper" android:configChanges="orientation|keyboardHidden|screenSize" android:exported="true"><meta-data android:name="android.app.lib_name" android:value="main"/><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity></application></manifest>' > AndroidManifest.xml
+          
+          mkdir -p apk/lib/arm64-v8a
+          cp lib/arm64-v8a/libmain.so apk/lib/arm64-v8a/
+          
+          /usr/local/lib/android/sdk/build-tools/33.0.2/aapt package -f -M AndroidManifest.xml -I /usr/local/lib/android/sdk/platforms/android-33/android.jar -F VoxelHopper-Unsigned.apk apk/
+          
+          keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          /usr/local/lib/android/sdk/build-tools/33.0.2/apksigner sign --ks debug.keystore --ks-pass pass:android --out VoxelHopper.apk VoxelHopper-Unsigned.apk
+
+      - name: Upload Downloadable Mobile Application Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VoxelHopper-Android-Native
+          path: android/VoxelHopper.apk
+          retention-days: 7
