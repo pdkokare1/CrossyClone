@@ -95,8 +95,8 @@ BiomeType GetBiome(int z) {
     return BIOME_CYBER;
 }
 
-// Generates procedural sound frequencies natively
-void AudioCallback(void *buffer, unsigned int frames) {
+// Generates procedural sound frequencies natively - Renamed to fix type collision
+void GameAudioCallback(void *buffer, unsigned int frames) {
     short *d = (short *)buffer;
     float incr1 = audioFreq1 / 44100.0f;
     float incr2 = audioFreq2 / 44100.0f;
@@ -146,11 +146,15 @@ void SpawnCubeParticles(Vector3 pos, Color c, int count) {
     for (int i = 0; i < count; i++) {
         Particle p;
         p.pos = pos;
-        p.velocity = { ((float)rand()/RAND_MAX - 0.5f)*4.0f, ((float)rand()/RAND_MAX)*5.0f + 2.0f, ((float)rand()/RAND_MAX - 0.5f)*4.0f };
+        p.velocity = { 
+            ((float)rand() / (float)RAND_MAX - 0.5f) * 4.0f, 
+            ((float)rand() / (float)RAND_MAX) * 5.0f + 2.0f, 
+            ((float)rand() / (float)RAND_MAX - 0.5f) * 4.0f 
+        };
         p.color = c;
-        p.scale = 0.06f + ((float)rand()/RAND_MAX)*0.1f;
+        p.scale = 0.06f + ((float)rand() / (float)RAND_MAX) * 0.1f;
         p.life = 1.0f;
-        p.decay = 1.5f + ((float)rand()/RAND_MAX)*1.0f;
+        p.decay = 1.5f + ((float)rand() / (float)RAND_MAX) * 1.0f;
         activeParticles.push_back(p);
     }
 }
@@ -172,26 +176,26 @@ void GenerateLaneStructure(int z) {
         return;
     }
 
-    float randVal = (float)rand() / RAND_MAX;
+    float randVal = (float)rand() / (float)RAND_MAX;
     if (randVal < 0.42f) {
         lane.type = LANE_ROAD;
-        lane.baseColor = (biome == BIOME_CYBER) ? EXGRAY : GRAY;
-        lane.speed = (1.5f + ((float)rand()/RAND_MAX)*1.5f) * (((float)rand()/RAND_MAX > 0.5f) ? 1.0f : -1.0f) * speedScalar;
+        lane.baseColor = (biome == BIOME_CYBER) ? Color{ 30, 32, 38, 255 } : GRAY;
+        lane.speed = (1.5f + ((float)rand() / (float)RAND_MAX) * 1.5f) * (((float)rand() / (float)RAND_MAX > 0.5f) ? 1.0f : -1.0f) * speedScalar;
         lane.spawnTimer = 0.0f;
-        lane.spawnInterval = (2.0f + ((float)rand()/RAND_MAX)*1.5f) / spaceScalar;
+        lane.spawnInterval = (2.0f + ((float)rand() / (float)RAND_MAX) * 1.5f) / spaceScalar;
     } else if (randVal < 0.68f) {
         lane.type = LANE_RIVER;
         lane.baseColor = (biome == BIOME_CYBER) ? DARKBLUE : BLUE;
-        lane.speed = (1.0f + ((float)rand()/RAND_MAX)*1.0f) * (((float)rand()/RAND_MAX > 0.5f) ? 1.0f : -1.0f) * speedScalar;
+        lane.speed = (1.0f + ((float)rand() / (float)RAND_MAX) * 1.0f) * (((float)rand() / (float)RAND_MAX > 0.5f) ? 1.0f : -1.0f) * speedScalar;
         lane.spawnTimer = 0.0f;
-        lane.spawnInterval = (2.5f + ((float)rand()/RAND_MAX)*1.5f) / spaceScalar;
+        lane.spawnInterval = (2.5f + ((float)rand() / (float)RAND_MAX) * 1.5f) / spaceScalar;
     } else if (randVal < 0.82f) {
         lane.type = LANE_RAILWAY;
         lane.baseColor = (biome == BIOME_CYBER) ? BLACK : LIME;
-        lane.speed = ((float)rand()/RAND_MAX > 0.5f ? 8.0f : -8.0f) * speedScalar;
+        lane.speed = (((float)rand() / (float)RAND_MAX) > 0.5f ? 8.0f : -8.0f) * speedScalar;
         lane.activeWarning = false;
         lane.warningTimer = 0.0f;
-        lane.trainCountdown = (4.0f + ((float)rand()/RAND_MAX)*3.0f) / speedScalar;
+        lane.trainCountdown = (4.0f + ((float)rand() / (float)RAND_MAX) * 3.0f) / speedScalar;
     } else {
         lane.type = LANE_GRASS;
         lane.baseColor = (biome == BIOME_DESERT) ? ORANGE : ((biome == BIOME_CYBER) ? MAGENTA : GREEN);
@@ -199,11 +203,11 @@ void GenerateLaneStructure(int z) {
         // Populate specific non-passable obstacles dynamically
         for (int x = START_COL - 10; x <= START_COL + 10; x++) {
             if (x == START_COL && z <= 4) continue;
-            if (((float)rand() / RAND_MAX) < 0.20f) {
+            if (((float)rand() / (float)RAND_MAX) < 0.20f) {
                 Obstacle obs;
                 obs.gridX = x;
                 obs.type = rand() % 3;
-                obs.offset = { ((float)rand()/RAND_MAX - 0.5f)*0.2f, 0.0f, ((float)rand()/RAND_MAX - 0.5f)*0.2f };
+                obs.offset = { ((float)rand() / (float)RAND_MAX - 0.5f) * 0.2f, 0.0f, ((float)rand() / (float)RAND_MAX - 0.5f) * 0.2f };
                 lane.obstacles.push_back(obs);
             }
         }
@@ -363,7 +367,7 @@ void ProcessFixedPhysicsUpdate(float dt) {
                 lane.warningTimer -= dt;
                 if (lane.warningTimer <= 0.0f) {
                     lane.activeWarning = false;
-                    lane.trainCountdown = 3.0f + ((float)rand()/RAND_MAX)*4.0f;
+                    lane.trainCountdown = 3.0f + ((float)rand() / (float)RAND_MAX) * 4.0f;
                     MovingEntity train;
                     train.position = { lane.speed > 0 ? -25.0f : 25.0f, 0.1f, (float)lane.zIndex };
                     train.speed = lane.speed * 2.0f;
@@ -379,7 +383,7 @@ void ProcessFixedPhysicsUpdate(float dt) {
             if (!ent.active) continue;
             ent.position.x += ent.speed * dt;
 
-            // Accurate bounding volume math calculations remove multi-tap flicker vulnerabilities
+            // Bounding volume math calculations
             if (currentGameState == STATE_PLAYING && playerGridZ == lane.zIndex) {
                 if (lane.type == LANE_ROAD && std::abs(ent.position.x - playerPos.x) < 0.85f) {
                     TriggerDeathSequence(RED);
@@ -392,7 +396,7 @@ void ProcessFixedPhysicsUpdate(float dt) {
                 if (lane.type == LANE_RIVER && !isJumping && std::abs(ent.position.x - playerPos.x) < 1.3f) {
                     playerOnLog = true;
                     playerPos.x += ent.speed * dt;
-                    playerGridX = START_COL + std::round(playerPos.x);
+                    playerGridX = START_COL + (int)std::round(playerPos.x);
                     targetPlayerPos.x = playerPos.x;
                 }
             }
@@ -427,7 +431,7 @@ int main(void) {
 
     // Setup procedural real-time hardware buffer streamer
     ambientStream = LoadAudioStream(44100, 16, 1);
-    SetAudioStreamCallback(ambientStream, AudioCallback);
+    SetAudioStreamCallback(ambientStream, GameAudioCallback);
     PlayAudioStream(ambientStream);
 
     Camera3D camera = { 0 };
@@ -453,8 +457,8 @@ int main(void) {
         // Native mobile touch processing interface tracking logic
         if (GetTouchPointCount() > 0 && !isJumping && currentGameState == STATE_PLAYING) {
             Vector2 touchPos = GetTouchPosition(0);
-            float screenW = GetScreenWidth();
-            float screenH = GetScreenHeight();
+            float screenW = (float)GetScreenWidth();
+            float screenH = (float)GetScreenHeight();
 
             if (touchPos.y < screenH * 0.33f) ExecuteMovementQueue(0, 1);
             else if (touchPos.y > screenH * 0.66f) ExecuteMovementQueue(0, -1);
@@ -479,8 +483,8 @@ int main(void) {
         }
 
         if (cameraShake > 0.0f) {
-            camera.position.x += ((float)rand()/RAND_MAX - 0.5f) * cameraShake;
-            camera.position.y += ((float)rand()/RAND_MAX - 0.5f) * cameraShake;
+            camera.position.x += ((float)rand() / (float)RAND_MAX - 0.5f) * cameraShake;
+            camera.position.y += ((float)rand() / (float)RAND_MAX - 0.5f) * cameraShake;
         }
 
         BeginDrawing();
@@ -502,7 +506,7 @@ int main(void) {
                 for (auto &obs : lane.obstacles) {
                     Vector3 obsPos = { (float)(obs.gridX - START_COL) + obs.offset.x, 0.4f, (float)lane.zIndex + obs.offset.z };
                     DrawCube(obsPos, 0.6f, 0.8f, 0.6f, BROWN);
-                    DrawCube({obsPos.x, obsPos.y + 0.4f, obsPos.z}, 0.9f, 0.5f, 0.9f, FORESTGREEN);
+                    DrawCube({obsPos.x, obsPos.y + 0.4f, obsPos.z}, 0.9f, 0.5f, 0.9f, DARKGREEN);
                 }
 
                 for (auto &ent : lane.entities) {
@@ -531,8 +535,8 @@ int main(void) {
 
         // Render clean, non-aliased 2D interface text matching mobile alignments
         if (currentGameState == STATE_START) {
-            DrawText("VOXEL HOPPER", GetScreenWidth()/2 - MeasureText("VOXEL HOPPER", 60)/2, GetScreenHeight()*0.25f, 60, WHITE);
-            DrawText("TAP SCREEN TO CHOOSE VARIANT & INITIALIZE RUN", GetScreenWidth()/2 - MeasureText("TAP SCREEN TO CHOOSE VARIANT & INITIALIZE RUN", 24)/2, GetScreenHeight()*0.45f, 24, LIGHTGRAY);
+            DrawText("VOXEL HOPPER", GetScreenWidth()/2 - MeasureText("VOXEL HOPPER", 60)/2, (int)(GetScreenHeight()*0.25f), 60, WHITE);
+            DrawText("TAP SCREEN TO INITIALIZE RUN", GetScreenWidth()/2 - MeasureText("TAP SCREEN TO INITIALIZE RUN", 24)/2, (int)(GetScreenHeight()*0.45f), 24, LIGHTGRAY);
         } else if (currentGameState == STATE_PLAYING) {
             std::string scoreStr = std::to_string(maxRowReached);
             DrawText(scoreStr.c_str(), 40, 50, 70, WHITE);
@@ -541,10 +545,10 @@ int main(void) {
                 DrawText(comboStr.c_str(), 40, 130, 35, GOLD);
             }
         } else if (currentGameState == STATE_GAMEOVER) {
-            DrawText("GRID COLLISION", GetScreenWidth()/2 - MeasureText("GRID COLLISION", 55)/2, GetScreenHeight()*0.3f, 55, RED);
+            DrawText("GRID COLLISION", GetScreenWidth()/2 - MeasureText("GRID COLLISION", 55)/2, (int)(GetScreenHeight()*0.3f), 55, RED);
             std::string finalStats = "Lanes Crossed: " + std::to_string(maxRowReached) + " | Best: " + std::to_string(globalHighScore);
-            DrawText(finalStats.c_str(), GetScreenWidth()/2 - MeasureText(finalStats.c_str(), 28)/2, GetScreenHeight()*0.45f, 28, LIGHTGRAY);
-            DrawText("TAP TO RESET CYCLE", GetScreenWidth()/2 - MeasureText("TAP TO RESET CYCLE", 22)/2, GetScreenHeight()*0.6f, 22, GRAY);
+            DrawText(finalStats.c_str(), GetScreenWidth()/2 - MeasureText(finalStats.c_str(), 28)/2, (int)(GetScreenHeight()*0.45f), 28, LIGHTGRAY);
+            DrawText("TAP TO RESET CYCLE", GetScreenWidth()/2 - MeasureText("TAP TO RESET CYCLE", 22)/2, (int)(GetScreenHeight()*0.6f), 22, GRAY);
         }
 
         EndDrawing();
