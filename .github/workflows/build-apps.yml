@@ -28,11 +28,17 @@ jobs:
         run: |
           sdkmanager --install "ndk;25.2.9519653" "build-tools;33.0.2" "platforms;android-33"
 
-      - name: Fetch Raylib Source and Build for Android
+      - name: Fetch Raylib Source and Build for Android via NDK Toolchain
         run: |
           git clone --depth 1 https://github.com/raysan5/raylib.git raylib_src
           cd raylib_src/src
-          make PLATFORM=PLATFORM_ANDROID ANDROID_NDK=/usr/local/lib/android/sdk/ndk/25.2.9519653 ANDROID_ARCH=arm64-v8a -j$(nproc)
+          # Force the use of the Android NDK Clang compiler instead of the host's desktop GCC
+          make PLATFORM=PLATFORM_ANDROID \
+            ANDROID_NDK=/usr/local/lib/android/sdk/ndk/25.2.9519653 \
+            ANDROID_ARCH=arm64-v8a \
+            CC=/usr/local/lib/android/sdk/ndk/25.2.9519653/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android33-clang \
+            AR=/usr/local/lib/android/sdk/ndk/25.2.9519653/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar \
+            -j$(nproc)
           cd ../..
 
       - name: Structure Native Android Project Build Target
