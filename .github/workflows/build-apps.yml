@@ -49,13 +49,11 @@ jobs:
 
       - name: Compile Native C/C++ Subsystems Safely
         run: |
-          # 1. Compile the C runtime layer utilizing the matching clang C compiler tool
           /usr/local/lib/android/sdk/ndk/25.2.9519653/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android33-clang \
-            -c -fPIC -O2 android/src/android_native_app_glue.c \
+            -c -fPIC -O2 -DPLATFORM_ANDROID android/src/android_native_app_glue.c \
             -o android/obj/android_native_app_glue.o \
             -I/usr/local/lib/android/sdk/ndk/25.2.9519653/sources/android/native_app_glue
 
-          # 2. Compile and link the main C++ game loops with the generated object wrapper
           /usr/local/lib/android/sdk/ndk/25.2.9519653/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android33-clang++ \
             -shared -fPIC -std=c++17 -DPLATFORM_ANDROID \
             android/src/main.cpp android/obj/android_native_app_glue.o \
@@ -67,7 +65,7 @@ jobs:
       - name: Package and Assemble Native Application Package (APK)
         run: |
           cd android
-          echo '<?xml version="1.0" encoding="utf-8"?><manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.thegamut.voxelhopper" android:versionCode="1" android:versionName="1.0"><uses-sdk android:minSdkVersion="24" android:targetSdkVersion="33"/><uses-feature android:glEsVersion="0x00020000" android:required="true"/><application android:label="Voxel Hopper" android:hasCode="false"><activity android:name="android.app.NativeActivity" android:label="Voxel Hopper" android:configChanges="orientation|keyboardHidden|screenSize" android:exported="true"><meta-data android:name="android.app.lib_name" android:value="main"/><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity></application></manifest>' > AndroidManifest.xml
+          echo '<?xml version="1.0" encoding="utf-8"?><manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.thegamut.voxelhopper" android:versionCode="1" android:versionName="1.0"><uses-sdk android:minSdkVersion="24" android:targetSdkVersion="33"/><uses-feature android:glEsVersion="0x00020000" android:required="true"/><application android:label="Voxel Hopper" android:hasCode="false" android:extractNativeLibs="true"><activity android:name="android.app.NativeActivity" android:label="Voxel Hopper" android:configChanges="orientation|keyboardHidden|screenSize" android:exported="true"><meta-data android:name="android.app.lib_name" android:value="main"/><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity></application></manifest>' > AndroidManifest.xml
           
           mkdir -p apk/lib/arm64-v8a
           cp lib/arm64-v8a/libmain.so apk/lib/arm64-v8a/
