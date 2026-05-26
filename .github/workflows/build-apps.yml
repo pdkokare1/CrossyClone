@@ -32,7 +32,6 @@ jobs:
         run: |
           git clone --depth 1 https://github.com/raysan5/raylib.git raylib_src
           cd raylib_src/src
-          # Force the use of the Android NDK Clang compiler instead of the host's desktop GCC
           make PLATFORM=PLATFORM_ANDROID \
             ANDROID_NDK=/usr/local/lib/android/sdk/ndk/25.2.9519653 \
             ANDROID_ARCH=arm64-v8a \
@@ -46,13 +45,18 @@ jobs:
           mkdir -p android/src android/obj android/lib/arm64-v8a
           cp raylib_src/src/libraylib.a android/lib/arm64-v8a/
           cp main.cpp android/src/
+          # Copy the mandatory Android glue source layer into our project frame
+          cp /usr/local/lib/android/sdk/ndk/25.2.9519653/sources/android/native_app_glue/android_native_app_glue.c android/src/
 
-      - name: Compile C++ Source Code to Shared Native Library
+      - name: Compile C++ Source Code with Native Glue to Shared Library
         run: |
           /usr/local/lib/android/sdk/ndk/25.2.9519653/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android33-clang++ \
-            -shared -fPIC -std=c++17 android/src/main.cpp \
+            -shared -fPIC -std=c++17 -DPLATFORM_ANDROID \
+            android/src/main.cpp android/src/android_native_app_glue.c \
             -o android/lib/arm64-v8a/libmain.so \
-            -Iraylib_src/src -Landroid/lib/arm64-v8a -lraylib -lGLESv2 -lEGL -landroid -llog -lOpenSLES -m64
+            -Iraylib_src/src \
+            -I/usr/local/lib/android/sdk/ndk/25.2.9519653/sources/android/native_app_glue \
+            -Landroid/lib/arm64-v8a -lraylib -lGLESv2 -lEGL -landroid -llog -lOpenSLES -m64
 
       - name: Package and Assemble Native Application Package (APK)
         run: |
