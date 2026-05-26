@@ -415,7 +415,6 @@ void ProcessFixedPhysicsUpdate(float dt) {
     if (cameraShake > 0.0f) cameraShake -= dt * 2.0f;
 }
 
-// THE MAIN GAME RUNNER: Contains pure window rendering frames
 void ExecuteGameLoopIteration(Camera3D &camera, float &accumulator) {
     float frameTime = GetFrameTime();
     if (frameTime > 0.1f) frameTime = 0.1f;
@@ -521,41 +520,9 @@ void ExecuteGameLoopIteration(Camera3D &camera, float &accumulator) {
     }
 }
 
-// ANDROID MAIN EXECUTION SUB-SYSTEM ENTRY HOOK
-#if defined(PLATFORM_ANDROID)
-void android_main(struct android_app *state) {
-    // 1. Core device channel initializations
-    InitWindow(1080, 2400, "Voxel Hopper - Native Performance");
-    InitAudioDevice();
-    SetTargetFPS(60);
-
-    ambientStream = LoadAudioStream(44100, 16, 1);
-    SetAudioStreamCallback(ambientStream, GameAudioCallback);
-    PlayAudioStream(ambientStream);
-
-    Camera3D camera = { 0 };
-    camera.position = { 7.0f, 9.0f, 7.0f };
-    camera.target = { 0.0f, 0.0f, 0.0f };
-    camera.up = { 0.0f, 1.0f, 0.0f };
-    camera.fovy = 14.0f;
-    camera.projection = CAMERA_ORTHOGRAPHIC;
-
-    float accumulator = 0.0f;
-    SynchronizeViewportLanes(0);
-
-    // 2. Drive the core engine loops natively inside Android's system thread context frame
-    while (!WindowShouldClose()) {
-        ExecuteGameLoopIteration(camera, accumulator);
-    }
-
-    // 3. Unload channels safely on close
-    UnloadAudioStream(ambientStream);
-    CloseAudioDevice();
-    CloseWindow();
-}
-#else
+// RESTORED STANDARD ENTRY POINT: Portability layer intercepting native execution cleanly
 int main(void) {
-    InitWindow(1080, 2400, "Voxel Hopper - Desktop Fallback");
+    InitWindow(1080, 2400, "Voxel Hopper - Native Performance");
     InitAudioDevice();
     SetTargetFPS(60);
 
@@ -582,4 +549,3 @@ int main(void) {
     CloseWindow();
     return 0;
 }
-#endif
