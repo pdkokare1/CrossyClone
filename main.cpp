@@ -6,12 +6,7 @@
 #include <cmath>
 #include <cstdlib>
 
-// Android specific interface wrapper definitions
-#if defined(PLATFORM_ANDROID)
-    #include <android_native_app_glue.h>
-#endif
-
-// Deterministic constants matching original engine parameters
+// Configuration constants matching original engine parameters
 #define COLS 20000
 #define START_COL 10000
 #define FIXED_PHYSICS_STEP (1.0f / 60.0f)
@@ -420,8 +415,116 @@ void ProcessFixedPhysicsUpdate(float dt) {
     if (cameraShake > 0.0f) cameraShake -= dt * 2.0f;
 }
 
-// DRIVER: Explicit Game Run Function containing core loop architectures
-void RunGameEngineLoop(void) {
+// THE MAIN GAME RUNNER: Contains pure window rendering frames
+void ExecuteGameLoopIteration(Camera3D &camera, float &accumulator) {
+    float frameTime = GetFrameTime();
+    if (frameTime > 0.1f) frameTime = 0.1f;
+    
+    accumulator += frameTime;
+    while (accumulator >= FIXED_PHYSICS_STEP) {
+        ProcessFixedPhysicsUpdate(FIXED_PHYSICS_STEP);
+        accumulator -= FIXED_PHYSICS_STEP;
+    }
+
+    if (GetTouchPointCount() > 0 && !isJumping && currentGameState == STATE_PLAYING) {
+        Vector2 touchPos = GetTouchPosition(0);
+        float screenW = (float)GetScreenWidth();
+        float screenH = (float)GetScreenHeight();
+
+        if (touchPos.y < screenH * 0.33f) ExecuteMovementQueue(0, 1);
+        else if (touchPos.y > screenH * 0.66f) ExecuteMovementQueue(0, -1);
+        else {
+            if (touchPos.x < screenW * 0.5f) ExecuteMovementQueue(1, 0);
+            else ExecuteMovementQueue(-1, 0);
+        }
+    }
+
+    if (IsGestureDetected(GESTURE_TAP)) {
+        if (currentGameState == STATE_START) ResetGameplaySession();
+        else if (currentGameState == STATE_GAMEOVER) currentGameState = STATE_START;
+    }
+
+    if (currentGameState == STATE_PLAYING || currentGameState == STATE_GAMEOVER) {
+        camera.target.x += ((playerPos.x) - camera.target.x) * 0.1f;
+        camera.target.z += ((playerPos.z + 3.0f) - camera.target.z) * 0.1f;
+        camera.position.x = camera.target.x + 7.0f;
+        camera.position.z = camera.target.z + 7.0f;
+    }
+
+    if (cameraShake > 0.0f) {
+        camera.position.x += ((float)rand() / (float)RAND_MAX - 0.5f) * cameraShake;
+        camera.position.y += ((float)rand() / (float)RAND_MAX - 0.5f) * cameraShake;
+    }
+
+    BeginDrawing();
+    ClearBackground(GetBiome(playerGridZ) == BIOME_CYBER ? BLACK : SKYBLUE);
+
+    BeginMode3D(camera);
+        for (auto &pair : activeLanes) {
+            Lane &lane = pair.second;
+            DrawCube({ 0.0f, -0.5f, (float)lane.zIndex }, 60.0f, 1.0f, 1.0f, lane.baseColor);
+
+            if (lane.type == LANE_ROAD) {
+                for (float mx = -30.0f; mx < 30.0f; mx += 4.0f) {
+                    DrawCube({ mx, -0.01f, (float)lane.zIndex }, 0.5f, 0.02f, 0.1f, RAYWHITE);
+                }
+            }
+
+            for (auto &obs : lane.obstacles) {
+                Vector3 obsPos = { (float)(obs.gridX - START_COL) + obs.offset.x, 0.4f, (float)lane.zIndex + obs.offset.z };
+                DrawCube(obsPos, 0.6f, 0.8f, 0.6f, BROWN);
+                DrawCube({obsPos.x, obsPos.y + 0.4f, obsPos.z}, 0.9f, 0.5f, 0.9f, DARKGREEN);
+            }
+
+            for (auto &ent : lane.entities) {
+                if (!ent.active) continue;
+                if (lane.type == LANE_ROAD) {
+                    DrawCube(ent.position, 1.4f, 0.6f, 0.8f, RED);
+                } else if (lane.type == LANE_RIVER) {
+                    DrawCube(ent.position, 2.5f, 0.2f, 0.7f, DARKGRAY);
+                } else if (lane.type == LANE_RAILWAY) {
+                    DrawCube(ent.position, 6.0f, 1.2f, 0.8f, YELLOW);
+                }
+            }
+        }
+
+        if (currentGameState == STATE_PLAYING) {
+            DrawCube(playerPos, 0.6f * playerScale.x, 0.7f * playerScale.y, 0.6f * playerScale.z, WHITE);
+            DrawCube({ playerPos.x, playerPos.y + (0.3f * playerScale.y), playerPos.z + (0.3f * playerScale.z) }, 0.2f, 0.15f, 0.2f, ORANGE);
+        }
+
+        for (auto &p : activeParticles) {
+            DrawCube(p.pos, p.scale, p.scale, p.scale, p.color);
+        }
+    EndMode3D();
+
+    if (currentGameState == STATE_START) {
+        DrawText("VOXEL HOPPER", GetScreenWidth()/2 - MeasureText("VOXEL HOPPER", 60)/2, (int)(GetScreenHeight()*0.25f), 60, WHITE);
+        DrawText("TAP SCREEN TO INITIALIZE RUN", GetScreenWidth()/2 - MeasureText("TAP SCREEN TO INITIALIZE RUN", 24)/2, (int)(GetScreenHeight()*0.45f), 24, LIGHTGRAY);
+    } else if (currentGameState == STATE_PLAYING) {
+        std::string scoreStr = std::to_string(maxRowReached);
+        DrawText(scoreStr.c_str(), 40, 50, 70, WHITE);
+        if (currentComboMultiplier > 1) {
+            std::string comboStr = "COMBO X" + std::to_string(currentComboMultiplier);
+            DrawText(comboStr.c_str(), 40, 130, 35, GOLD);
+        }
+    } else if (currentGameState == STATE_GAMEOVER) {
+        DrawText("GRID COLLISION", GetScreenWidth()/2 - MeasureText("GRID COLLISION", 55)/2, (int)(GetScreenHeight()*0.3f), 55, RED);
+        std::string finalStats = "Lanes Crossed: " + std::to_string(maxRowReached) + " | Best: " + std::to_string(globalHighScore);
+        DrawText(finalStats.c_str(), GetScreenWidth()/2 - MeasureText(finalStats.c_str(), 28)/2, (int)(GetScreenHeight()*0.45f), 28, LIGHTGRAY);
+        DrawText("TAP TO RESET CYCLE", GetScreenWidth()/2 - MeasureText("TAP TO RESET CYCLE", 22)/2, (int)(GetScreenHeight()*0.6f), 22, GRAY);
+    }
+
+    EndDrawing();
+    if (currentGameState == STATE_PLAYING) {
+        SynchronizeViewportLanes(playerGridZ);
+    }
+}
+
+// ANDROID MAIN EXECUTION SUB-SYSTEM ENTRY HOOK
+#if defined(PLATFORM_ANDROID)
+void android_main(struct android_app *state) {
+    // 1. Core device channel initializations
     InitWindow(1080, 2400, "Voxel Hopper - Native Performance");
     InitAudioDevice();
     SetTargetFPS(60);
@@ -440,126 +543,43 @@ void RunGameEngineLoop(void) {
     float accumulator = 0.0f;
     SynchronizeViewportLanes(0);
 
+    // 2. Drive the core engine loops natively inside Android's system thread context frame
     while (!WindowShouldClose()) {
-        float frameTime = GetFrameTime();
-        if (frameTime > 0.1f) frameTime = 0.1f;
-        
-        accumulator += frameTime;
-        while (accumulator >= FIXED_PHYSICS_STEP) {
-            ProcessFixedPhysicsUpdate(FIXED_PHYSICS_STEP);
-            accumulator -= FIXED_PHYSICS_STEP;
-        }
+        ExecuteGameLoopIteration(camera, accumulator);
+    }
 
-        if (GetTouchPointCount() > 0 && !isJumping && currentGameState == STATE_PLAYING) {
-            Vector2 touchPos = GetTouchPosition(0);
-            float screenW = (float)GetScreenWidth();
-            float screenH = (float)GetScreenHeight();
+    // 3. Unload channels safely on close
+    UnloadAudioStream(ambientStream);
+    CloseAudioDevice();
+    CloseWindow();
+}
+#else
+int main(void) {
+    InitWindow(1080, 2400, "Voxel Hopper - Desktop Fallback");
+    InitAudioDevice();
+    SetTargetFPS(60);
 
-            if (touchPos.y < screenH * 0.33f) ExecuteMovementQueue(0, 1);
-            else if (touchPos.y > screenH * 0.66f) ExecuteMovementQueue(0, -1);
-            else {
-                if (touchPos.x < screenW * 0.5f) ExecuteMovementQueue(1, 0);
-                else ExecuteMovementQueue(-1, 0);
-            }
-        }
+    ambientStream = LoadAudioStream(44100, 16, 1);
+    SetAudioStreamCallback(ambientStream, GameAudioCallback);
+    PlayAudioStream(ambientStream);
 
-        if (IsGestureDetected(GESTURE_TAP)) {
-            if (currentGameState == STATE_START) ResetGameplaySession();
-            else if (currentGameState == STATE_GAMEOVER) currentGameState = STATE_START;
-        }
+    Camera3D camera = { 0 };
+    camera.position = { 7.0f, 9.0f, 7.0f };
+    camera.target = { 0.0f, 0.0f, 0.0f };
+    camera.up = { 0.0f, 1.0f, 0.0f };
+    camera.fovy = 14.0f;
+    camera.projection = CAMERA_ORTHOGRAPHIC;
 
-        if (currentGameState == STATE_PLAYING || currentGameState == STATE_GAMEOVER) {
-            camera.target.x += ((playerPos.x) - camera.target.x) * 0.1f;
-            camera.target.z += ((playerPos.z + 3.0f) - camera.target.z) * 0.1f;
-            camera.position.x = camera.target.x + 7.0f;
-            camera.position.z = camera.target.z + 7.0f;
-        }
+    float accumulator = 0.0f;
+    SynchronizeViewportLanes(0);
 
-        if (cameraShake > 0.0f) {
-            camera.position.x += ((float)rand() / (float)RAND_MAX - 0.5f) * cameraShake;
-            camera.position.y += ((float)rand() / (float)RAND_MAX - 0.5f) * cameraShake;
-        }
-
-        BeginDrawing();
-        ClearBackground(GetBiome(playerGridZ) == BIOME_CYBER ? BLACK : SKYBLUE);
-
-        BeginMode3D(camera);
-            for (auto &pair : activeLanes) {
-                Lane &lane = pair.second;
-                DrawCube({ 0.0f, -0.5f, (float)lane.zIndex }, 60.0f, 1.0f, 1.0f, lane.baseColor);
-
-                if (lane.type == LANE_ROAD) {
-                    for (float mx = -30.0f; mx < 30.0f; mx += 4.0f) {
-                        DrawCube({ mx, -0.01f, (float)lane.zIndex }, 0.5f, 0.02f, 0.1f, RAYWHITE);
-                    }
-                }
-
-                for (auto &obs : lane.obstacles) {
-                    Vector3 obsPos = { (float)(obs.gridX - START_COL) + obs.offset.x, 0.4f, (float)lane.zIndex + obs.offset.z };
-                    DrawCube(obsPos, 0.6f, 0.8f, 0.6f, BROWN);
-                    DrawCube({obsPos.x, obsPos.y + 0.4f, obsPos.z}, 0.9f, 0.5f, 0.9f, DARKGREEN);
-                }
-
-                for (auto &ent : lane.entities) {
-                    if (!ent.active) continue;
-                    if (lane.type == LANE_ROAD) {
-                        DrawCube(ent.position, 1.4f, 0.6f, 0.8f, RED);
-                    } else if (lane.type == LANE_RIVER) {
-                        DrawCube(ent.position, 2.5f, 0.2f, 0.7f, DARKGRAY);
-                    } else if (lane.type == LANE_RAILWAY) {
-                        DrawCube(ent.position, 6.0f, 1.2f, 0.8f, YELLOW);
-                    }
-                }
-            }
-
-            if (currentGameState == STATE_PLAYING) {
-                DrawCube(playerPos, 0.6f * playerScale.x, 0.7f * playerScale.y, 0.6f * playerScale.z, WHITE);
-                DrawCube({ playerPos.x, playerPos.y + (0.3f * playerScale.y), playerPos.z + (0.3f * playerScale.z) }, 0.2f, 0.15f, 0.2f, ORANGE);
-            }
-
-            for (auto &p : activeParticles) {
-                DrawCube(p.pos, p.scale, p.scale, p.scale, p.color);
-            }
-        EndMode3D();
-
-        if (currentGameState == STATE_START) {
-            DrawText("VOXEL HOPPER", GetScreenWidth()/2 - MeasureText("VOXEL HOPPER", 60)/2, (int)(GetScreenHeight()*0.25f), 60, WHITE);
-            DrawText("TAP SCREEN TO INITIALIZE RUN", GetScreenWidth()/2 - MeasureText("TAP SCREEN TO INITIALIZE RUN", 24)/2, (int)(GetScreenHeight()*0.45f), 24, LIGHTGRAY);
-        } else if (currentGameState == STATE_PLAYING) {
-            std::string scoreStr = std::to_string(maxRowReached);
-            DrawText(scoreStr.c_str(), 40, 50, 70, WHITE);
-            if (currentComboMultiplier > 1) {
-                std::string comboStr = "COMBO X" + std::to_string(currentComboMultiplier);
-                DrawText(comboStr.c_str(), 40, 130, 35, GOLD);
-            }
-        } else if (currentGameState == STATE_GAMEOVER) {
-            DrawText("GRID COLLISION", GetScreenWidth()/2 - MeasureText("GRID COLLISION", 55)/2, (int)(GetScreenHeight()*0.3f), 55, RED);
-            std::string finalStats = "Lanes Crossed: " + std::to_string(maxRowReached) + " | Best: " + std::to_string(globalHighScore);
-            DrawText(finalStats.c_str(), GetScreenWidth()/2 - MeasureText(finalStats.c_str(), 28)/2, (int)(GetScreenHeight()*0.45f), 28, LIGHTGRAY);
-            DrawText("TAP TO RESET CYCLE", GetScreenWidth()/2 - MeasureText("TAP TO RESET CYCLE", 22)/2, (int)(GetScreenHeight()*0.6f), 22, GRAY);
-        }
-
-        EndDrawing();
-        if (currentGameState == STATE_PLAYING) {
-            SynchronizeViewportLanes(playerGridZ);
-        }
+    while (!WindowShouldClose()) {
+        ExecuteGameLoopIteration(camera, accumulator);
     }
 
     UnloadAudioStream(ambientStream);
     CloseAudioDevice();
     CloseWindow();
-}
-
-// NATIVE ENTRY POINT BOUNDARY: Automatically intercepts mobile thread handles
-#if defined(PLATFORM_ANDROID)
-void android_main(struct android_app *state) {
-    // Attach the application state handle onto Raylib's initialization subsystem cleanly
-    SetCallbacksANativeActivity_WindowChanged(state);
-    RunGameEngineLoop();
-}
-#else
-int main(void) {
-    RunGameEngineLoop();
     return 0;
 }
 #endif
