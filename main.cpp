@@ -6,6 +6,11 @@
 #include <cmath>
 #include <cstdlib>
 
+// Android specific interface wrapper definitions
+#if defined(PLATFORM_ANDROID)
+    #include <android_native_app_glue.h>
+#endif
+
 // Deterministic constants matching original engine parameters
 #define COLS 20000
 #define START_COL 10000
@@ -95,7 +100,7 @@ BiomeType GetBiome(int z) {
     return BIOME_CYBER;
 }
 
-// Generates procedural sound frequencies natively - Renamed to fix type collision
+// Generates procedural sound frequencies natively
 void GameAudioCallback(void *buffer, unsigned int frames) {
     short *d = (short *)buffer;
     float incr1 = audioFreq1 / 44100.0f;
@@ -107,15 +112,14 @@ void GameAudioCallback(void *buffer, unsigned int frames) {
             continue;
         }
         audioPhase += 1.0f;
-        float sample1 = std::sin(audioPhase * incr1 * 2.0f * PI) * 0.3f; // Triangle/Sine approximation
+        float sample1 = std::sin(audioPhase * incr1 * 2.0f * PI) * 0.3f;
         float sample2 = std::sin(audioPhase * incr2 * 2.0f * PI) * 0.2f;
-        d[i] = (short)((sample1 + sample2) * 200.0f); // Soft background balance
+        d[i] = (short)((sample1 + sample2) * 200.0f);
     }
 }
 
 void TriggerProgrammaticSound(std::string type) {
     if (!audioEnabled) return;
-    // Frequency overrides based on type simulate synthesized effects from original engine
     if (type == "jump") {
         audioFreq1 = 150.0f + (currentComboMultiplier * 20.0f);
         audioFreq2 = 300.0f;
@@ -200,7 +204,6 @@ void GenerateLaneStructure(int z) {
         lane.type = LANE_GRASS;
         lane.baseColor = (biome == BIOME_DESERT) ? ORANGE : ((biome == BIOME_CYBER) ? MAGENTA : GREEN);
         
-        // Populate specific non-passable obstacles dynamically
         for (int x = START_COL - 10; x <= START_COL + 10; x++) {
             if (x == START_COL && z <= 4) continue;
             if (((float)rand() / (float)RAND_MAX) < 0.20f) {
@@ -224,7 +227,6 @@ void SynchronizeViewportLanes(int centerZ) {
         GenerateLaneStructure(z);
     }
     
-    // Purge lanes outside viewport bounds to preserve device memory footprint
     for (auto it = activeLanes.begin(); it != activeLanes.end();) {
         if (it->first < minZ || it->first > maxZ) {
             it = activeLanes.erase(it);
@@ -242,10 +244,9 @@ void ExecuteMovementQueue(int dx, int dz) {
 
     if (nextX < START_COL - 10 || nextX > START_COL + 10 || nextZ < 0) return;
 
-    // Direct collision checking against generated static obstacle vectors
     if (activeLanes.find(nextZ) != activeLanes.end()) {
         for (auto &obs : activeLanes[nextZ].obstacles) {
-            if (obs.gridX == nextX) return; // Block input tracking cleanly
+            if (obs.gridX == nextX) return;
         }
     }
 
@@ -310,11 +311,11 @@ void ProcessFixedPhysicsUpdate(float dt) {
     gameTimeTotal += dt;
 
     if (isJumping) {
-        jumpProgress += 7.0f * dt; // Match original engine velocity interpolation speeds
+        jumpProgress += 7.0f * dt;
         if (jumpProgress >= 1.0f) {
             isJumping = false;
             playerPos = targetPlayerPos;
-            playerScale = { 1.2f, 0.7f, 1.2f }; // Dynamic landing squish execution
+            playerScale = { 1.2f, 0.7f, 1.2f };
         } else {
             playerPos.x = startPlayerPos.x + (targetPlayerPos.x - startPlayerPos.x) * jumpProgress;
             playerPos.z = startPlayerPos.z + (targetPlayerPos.z - startPlayerPos.z) * jumpProgress;
@@ -332,7 +333,6 @@ void ProcessFixedPhysicsUpdate(float dt) {
         UpdateAmbientFilters();
     }
 
-    // Process procedural lanes and layout obstacles natively
     for (auto &pair : activeLanes) {
         Lane &lane = pair.second;
         
@@ -377,13 +377,11 @@ void ProcessFixedPhysicsUpdate(float dt) {
             }
         }
 
-        // Apply spatial translations to active runtime vehicles
         bool playerOnLog = false;
         for (auto &ent : lane.entities) {
             if (!ent.active) continue;
             ent.position.x += ent.speed * dt;
 
-            // Bounding volume math calculations
             if (currentGameState == STATE_PLAYING && playerGridZ == lane.zIndex) {
                 if (lane.type == LANE_ROAD && std::abs(ent.position.x - playerPos.x) < 0.85f) {
                     TriggerDeathSequence(RED);
@@ -408,7 +406,6 @@ void ProcessFixedPhysicsUpdate(float dt) {
         }
     }
 
-    // Modern velocity calculations for generated particle instances
     for (auto it = activeParticles.begin(); it != activeParticles.end();) {
         it->pos = Vector3Add(it->pos, Vector3Scale(it->velocity, dt));
         it->velocity.y -= 9.8f * dt;
@@ -423,13 +420,12 @@ void ProcessFixedPhysicsUpdate(float dt) {
     if (cameraShake > 0.0f) cameraShake -= dt * 2.0f;
 }
 
-int main(void) {
-    // Initial hardware interface configurations
+// DRIVER: Explicit Game Run Function containing core loop architectures
+void RunGameEngineLoop(void) {
     InitWindow(1080, 2400, "Voxel Hopper - Native Performance");
     InitAudioDevice();
     SetTargetFPS(60);
 
-    // Setup procedural real-time hardware buffer streamer
     ambientStream = LoadAudioStream(44100, 16, 1);
     SetAudioStreamCallback(ambientStream, GameAudioCallback);
     PlayAudioStream(ambientStream);
@@ -438,7 +434,7 @@ int main(void) {
     camera.position = { 7.0f, 9.0f, 7.0f };
     camera.target = { 0.0f, 0.0f, 0.0f };
     camera.up = { 0.0f, 1.0f, 0.0f };
-    camera.fovy = 14.0f; // Emulate distinct isometric views cleanly utilizing orthographic projection metrics
+    camera.fovy = 14.0f;
     camera.projection = CAMERA_ORTHOGRAPHIC;
 
     float accumulator = 0.0f;
@@ -446,7 +442,7 @@ int main(void) {
 
     while (!WindowShouldClose()) {
         float frameTime = GetFrameTime();
-        if (frameTime > 0.1f) frameTime = 0.1f; // Prevent cascade frame freezing issues during operating system interrupts
+        if (frameTime > 0.1f) frameTime = 0.1f;
         
         accumulator += frameTime;
         while (accumulator >= FIXED_PHYSICS_STEP) {
@@ -454,7 +450,6 @@ int main(void) {
             accumulator -= FIXED_PHYSICS_STEP;
         }
 
-        // Native mobile touch processing interface tracking logic
         if (GetTouchPointCount() > 0 && !isJumping && currentGameState == STATE_PLAYING) {
             Vector2 touchPos = GetTouchPosition(0);
             float screenW = (float)GetScreenWidth();
@@ -468,13 +463,11 @@ int main(void) {
             }
         }
 
-        // Handle overlay selections utilizing touch coordinates inside menu boundaries
         if (IsGestureDetected(GESTURE_TAP)) {
             if (currentGameState == STATE_START) ResetGameplaySession();
             else if (currentGameState == STATE_GAMEOVER) currentGameState = STATE_START;
         }
 
-        // Track view target calculations relative to main model positions smoothly
         if (currentGameState == STATE_PLAYING || currentGameState == STATE_GAMEOVER) {
             camera.target.x += ((playerPos.x) - camera.target.x) * 0.1f;
             camera.target.z += ((playerPos.z + 3.0f) - camera.target.z) * 0.1f;
@@ -491,12 +484,10 @@ int main(void) {
         ClearBackground(GetBiome(playerGridZ) == BIOME_CYBER ? BLACK : SKYBLUE);
 
         BeginMode3D(camera);
-            // Draw generated terrain grids
             for (auto &pair : activeLanes) {
                 Lane &lane = pair.second;
                 DrawCube({ 0.0f, -0.5f, (float)lane.zIndex }, 60.0f, 1.0f, 1.0f, lane.baseColor);
 
-                // Highlight road partitions or water features natively
                 if (lane.type == LANE_ROAD) {
                     for (float mx = -30.0f; mx < 30.0f; mx += 4.0f) {
                         DrawCube({ mx, -0.01f, (float)lane.zIndex }, 0.5f, 0.02f, 0.1f, RAYWHITE);
@@ -521,19 +512,16 @@ int main(void) {
                 }
             }
 
-            // Draw player model matching scaling transformations
             if (currentGameState == STATE_PLAYING) {
                 DrawCube(playerPos, 0.6f * playerScale.x, 0.7f * playerScale.y, 0.6f * playerScale.z, WHITE);
                 DrawCube({ playerPos.x, playerPos.y + (0.3f * playerScale.y), playerPos.z + (0.3f * playerScale.z) }, 0.2f, 0.15f, 0.2f, ORANGE);
             }
 
-            // Draw calculated render loop particles
             for (auto &p : activeParticles) {
                 DrawCube(p.pos, p.scale, p.scale, p.scale, p.color);
             }
         EndMode3D();
 
-        // Render clean, non-aliased 2D interface text matching mobile alignments
         if (currentGameState == STATE_START) {
             DrawText("VOXEL HOPPER", GetScreenWidth()/2 - MeasureText("VOXEL HOPPER", 60)/2, (int)(GetScreenHeight()*0.25f), 60, WHITE);
             DrawText("TAP SCREEN TO INITIALIZE RUN", GetScreenWidth()/2 - MeasureText("TAP SCREEN TO INITIALIZE RUN", 24)/2, (int)(GetScreenHeight()*0.45f), 24, LIGHTGRAY);
@@ -557,9 +545,21 @@ int main(void) {
         }
     }
 
-    // Safely unload hardware channels on context teardown
     UnloadAudioStream(ambientStream);
     CloseAudioDevice();
     CloseWindow();
+}
+
+// NATIVE ENTRY POINT BOUNDARY: Automatically intercepts mobile thread handles
+#if defined(PLATFORM_ANDROID)
+void android_main(struct android_app *state) {
+    // Attach the application state handle onto Raylib's initialization subsystem cleanly
+    SetCallbacksANativeActivity_WindowChanged(state);
+    RunGameEngineLoop();
+}
+#else
+int main(void) {
+    RunGameEngineLoop();
     return 0;
 }
+#endif
