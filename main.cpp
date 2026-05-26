@@ -520,7 +520,7 @@ void ExecuteGameLoopIteration(Camera3D &camera, float &accumulator) {
     }
 }
 
-// RESTORED STANDARD ENTRY POINT: Portability layer intercepting native execution cleanly
+// RESTORED STANDARD ENTRY POINT EXPECTED BY THE RAYLIB ANDROID FRAMEWORK
 int main(void) {
     InitWindow(1080, 2400, "Voxel Hopper - Native Performance");
     InitAudioDevice();
